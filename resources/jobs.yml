@@ -1,0 +1,82 @@
+# Paths in resources/*.yml are relative to THIS file (hence ../dist, not ./dist).
+resources:
+  jobs:
+    medallion_refresh:
+      name: maven_market_medallion_refresh
+      description: >-
+        One end-to-end pipeline update (CSV + Kafka + MongoDB -> Bronze -> Silver -> Gold), then re-apply governance tags and run the gold tag gate
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: refresh_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_gold.id}
+        # A refresh can recreate a table and drop its tags: re-apply them, then fail the run if any
+        # gold table is still missing owner_team / data_sensitivity (the structural rule).
+        - task_key: govern
+          depends_on:
+            - task_key: refresh_pipeline
+          environment_key: default
+          python_wheel_task:
+            package_name: maven_market
+            entry_point: governance
+            parameters: ["--env", "${var.env}", "--config-dir", "${workspace.file_path}/config", "--action", "refresh"]
+        # Record the update (rows out, rows rejected, errors) in audit.audit_logs - also when it failed.
+        - task_key: audit
+          depends_on:
+            - task_key: refresh_pipeline
+          run_if: ALL_DONE
+          environment_key: default
+          python_wheel_task:
+            package_name: maven_market
+            entry_point: pipeline_audit
+            parameters: ["--env", "${var.env}", "--config-dir", "${workspace.file_path}/config", "--pipeline-id", "${resources.pipelines.silver_gold.id}"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "3"
+            dependencies:
+              - ../dist/*.whl
+
+    governance_bootstrap:
+      name: maven_market_governance_bootstrap
+      description: Create/replace the ABAC policies (mask, region row filter, gold structural rule), apply tags, run the gate
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: bootstrap
+          environment_key: default
+          python_wheel_task:
+            package_name: maven_market
+            entry_point: governance
+            parameters: ["--env", "${var.env}", "--config-dir", "${workspace.file_path}/config", "--action", "bootstrap"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "3"
+            dependencies:
+              - ../dist/*.whl
+
+    kafka_producer:
+      name: maven_market_kafka_producer
+      description: Simulate orders + inventory events into Confluent Kafka (keys from Bronze dimensions)
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: produce
+          environment_key: default
+          python_wheel_task:
+            package_name: maven_market
+            entry_point: kafka_producer
+            parameters:
+              - "--env"
+              - "${var.env}"
+              - "--config-dir"
+              - "${workspace.file_path}/config"
+              - "--max-events"
+              - "${var.producer_max_events}"
+              - "--events-per-second"
+              - "${var.producer_events_per_second}"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "3"
+            dependencies:
+              - ../dist/*.whl

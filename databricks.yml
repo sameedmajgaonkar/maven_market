@@ -1,0 +1,57 @@
+# Databricks Asset Bundle (DAB) root for Maven Market.
+# Path gotcha: paths in THIS file are relative to ./ (e.g. ./src/...),
+# paths inside resources/*.yml are relative to that file (e.g. ../src/...).
+bundle:
+  name: maven_market
+
+include:
+  - resources/*.yml
+
+# Build the maven_market wheel so jobs/pipelines can reference ../dist/*.whl
+artifacts:
+  default:
+    type: whl
+    build: pip wheel --no-deps -w dist .
+    path: .
+
+variables:
+  catalog:
+    description: Unity Catalog catalog that holds all Maven Market schemas
+    default: maven_market_uc
+  bronze_schema:
+    default: bronze
+  silver_schema:
+    default: silver
+  gold_schema:
+    default: gold
+  audit_schema:
+    default: audit
+  secret_scope:
+    description: Databricks secret scope (backed by Azure Key Vault)
+    default: maven_market
+  env:
+    description: Config environment name passed to maven_market.config.load_config()
+    default: dev
+  producer_max_events:
+    description: Events the simulator emits per run (0 = until stopped; keep finite for jobs)
+    default: "600"
+  producer_events_per_second:
+    default: "5"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      env: dev
+    workspace:
+      host: https://adb-7405615136388825.5.azuredatabricks.net
+
+  prod:
+    mode: production
+    variables:
+      env: prod
+    workspace:
+      host: https://adb-7405615136388825.5.azuredatabricks.net
+      # production mode requires an explicit root_path outside any user's home
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
