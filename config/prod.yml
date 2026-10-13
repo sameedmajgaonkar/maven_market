@@ -1,0 +1,4 @@
+# Prod environment overrides
+workspace:
+  host: ${DATABRICKS_HOST:https://adb-7405615136388825.5.azuredatabricks.net}
+secret_scope: maven_market

@@ -1,0 +1,66 @@
+# Data-quality rules for the Silver layer (Lakeflow expectations), one block per silver table key
+# (keys match `pipeline.silver.*` in defaults.yml). Edit a threshold here and the pipeline's DQ
+# behaviour changes with no code edit.
+#
+#   warn : row is kept, violation counted in the pipeline UI        (@dp.expect_all)
+#   drop : violating rows are removed                               (@dp.expect_all_or_drop)
+#   fail : the update stops - for critical keys only                (@dp.expect_all_or_fail)
+#
+# Constraints are Spark SQL boolean expressions.
+
+dim_customer:
+  drop:
+    valid_customer_id: "customer_id IS NOT NULL"
+  warn:
+    plausible_birthdate: "birthdate IS NULL OR (birthdate >= DATE'1900-01-01' AND birthdate <= current_date())"
+    known_income_band: "income_low_k IS NOT NULL"
+    valid_gender: "gender IN ('F', 'M')"
+
+dim_product:
+  drop:
+    valid_product_id: "product_id IS NOT NULL"
+    positive_price: "product_retail_price > 0"
+  warn:
+    cost_not_above_price: "product_cost <= product_retail_price"
+
+dim_store:
+  drop:
+    valid_store_id: "store_id IS NOT NULL"
+  warn:
+    positive_sqft: "total_sqft > 0"
+
+dim_region:
+  drop:
+    valid_region_id: "region_id IS NOT NULL"
+
+dim_date:
+  drop:
+    valid_date: "date IS NOT NULL"
+
+transactions:
+  fail:
+    # a sale without its dimension keys cannot be modelled - stop the update rather than load it
+    keys_present: "product_id IS NOT NULL AND customer_id IS NOT NULL AND store_id IS NOT NULL"
+  drop:
+    positive_quantity: "quantity > 0"
+    valid_date: "transaction_date IS NOT NULL"
+  warn:
+    stocked_before_sale: "stock_date <= transaction_date"
+
+returns:
+  drop:
+    positive_quantity: "quantity > 0"
+    keys_present: "product_id IS NOT NULL AND store_id IS NOT NULL"
+
+orders:
+  drop:
+    valid_order_id: "order_id IS NOT NULL"
+    keys_present: "customer_id IS NOT NULL AND product_id IS NOT NULL AND store_id IS NOT NULL"
+    positive_quantity: "quantity > 0"
+  warn:
+    positive_price: "unit_price > 0"
+
+inventory:
+  drop:
+    keys_present: "product_id IS NOT NULL AND store_id IS NOT NULL"
+    non_negative_stock: "quantity_on_hand >= 0"

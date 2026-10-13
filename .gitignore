@@ -1,0 +1,36 @@
+# Source data and local credentials
+*.csv
+*.zip
+.env
+*.env
+.databrickscfg
+.databricks/
+sql/governance/*.seed.sql
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local tools and editors
+.agents/
+.aws/
+.codex/
+.claude/
+.superpowers/
+.obsidian/
+.vscode/
+.idea/
+.DS_Store
+*:Zone.Identifier
+chat_export.json
+zed-work.md

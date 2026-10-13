@@ -1,0 +1,5 @@
+# Dev environment overrides
+# Set DATABRICKS_HOST and ADLS_ACCOUNT in your shell / CI env.
+workspace:
+  host: ${DATABRICKS_HOST:https://adb-7405615136388825.5.azuredatabricks.net}
+secret_scope: maven_market

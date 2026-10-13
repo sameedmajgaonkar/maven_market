@@ -1,0 +1,160 @@
+# Default config — shared across environments. Override per-env in dev.yml / prod.yml.
+# Read via maven_market.config.load_config(env). ${VAR} / ${VAR:default} = env substitution.
+
+catalog: maven_market_uc
+
+schemas:
+  bronze: bronze
+  silver: silver
+  gold: gold
+  audit: audit
+
+# Databricks workspace + secret scope (host comes from env/target at deploy time)
+workspace:
+  host: ${DATABRICKS_HOST:https://REPLACE-with-your-workspace.azuredatabricks.net}
+secret_scope: maven_market
+
+# ADLS Gen2 landing zone for raw CSVs (Auto Loader source root)
+storage:
+  account: ${ADLS_ACCOUNT:sgtmavenmarket}
+  landing_container: landing
+  uc_container: unity-catalog
+  # Source folders (customers/, transactions/, ...) sit directly under the container root.
+  landing_root: abfss://landing@${ADLS_ACCOUNT:sgtmavenmarket}.dfs.core.windows.net
+
+# Audit / observability
+audit:
+  table: audit.audit_logs
+
+# Bronze is declared inside the Lakeflow pipeline (src/maven_market/pipelines/bronze.py): the pipeline is the
+# only writer of every Bronze table and manages their checkpoints and schema locations.
+#
+# Batch CSV sources -> Bronze. 'path' is relative to storage.landing_root.
+# NOTE: customers and products are NOT here - they come from MongoDB (see `mongo:` below), which is
+# the only writer of bronze.customers / bronze.products. A table must have exactly one writer.
+sources:
+  stores:    {path: stores,       bronze_table: bronze.stores,       format: csv}
+  regions:   {path: regions,      bronze_table: bronze.regions,      format: csv}
+  returns:   {path: returns,      bronze_table: bronze.returns,      format: csv}
+  calendar:  {path: calendar,     bronze_table: bronze.calendar,     format: csv}
+  transactions: {path: transactions, bronze_table: bronze.transactions, format: csv}
+
+# Auto Loader (CSV) settings.
+autoloader:
+  # 'rescue': unexpected/new columns land in the rescued-data column; the stream never fails on drift.
+  schema_evolution_mode: rescue
+  rescued_data_column: _rescued_data
+  infer_column_types: true
+
+# Streaming sources (Kafka topics simulated by the producer) -> Bronze
+# Credentials are NOT here: only the *names* of the Key Vault secrets (read via the secret scope).
+kafka:
+  bootstrap: ${CONFLUENT_BOOTSTRAP:}
+  secrets:
+    bootstrap: confluent-bootstrap
+    api_key: confluent-api-key
+    api_secret: confluent-api-secret
+  starting_offsets: earliest
+  topics:
+    orders:
+      bronze_table: bronze.orders
+      dead_letter_table: bronze.orders_dead_letter
+      # DDL schema for from_json; an event missing any 'required' key goes to the dead-letter table.
+      schema: >-
+        event_type STRING, order_id STRING, customer_id INT, product_id INT, store_id INT,
+        quantity INT, unit_price DOUBLE, order_ts STRING
+      required: [order_id, customer_id, product_id, store_id]
+    inventory:
+      bronze_table: bronze.inventory
+      dead_letter_table: bronze.inventory_dead_letter
+      schema: >-
+        event_type STRING, product_id INT, store_id INT, quantity_on_hand INT, event_ts STRING
+      required: [product_id, store_id]
+
+# Event simulator (orders + inventory -> Kafka). Reads REAL keys from the dimension CSVs so
+# events join in Silver.
+producer:
+  events_per_second: 5
+  max_events: 0            # 0 = run until stopped
+  seed: 42
+  keys_dir: ${PRODUCER_KEYS_DIR:/Volumes/maven_market_uc/bronze/landing}
+  key_files:
+    customers: MavenMarket_Customers.csv
+    products: MavenMarket_Products.csv
+    stores: MavenMarket_Stores.csv
+
+# Silver/Gold datasets built by the Lakeflow pipeline. Keys are logical names used in code and in
+# expectations.yml; values are the table names inside the layer's schema (see `schemas`).
+pipeline:
+  silver:
+    dim_customer: dim_customer      # SCD2
+    dim_product: dim_product        # SCD2
+    dim_store: dim_store
+    dim_region: dim_region
+    dim_date: dim_date
+    transactions: transactions
+    returns: returns
+    orders: orders
+    inventory: inventory
+  gold:
+    dim_date: dim_date
+    dim_customer: dim_customer      # current version of the SCD2 silver dim
+    dim_product: dim_product
+    dim_store: dim_store            # store + region, denormalised
+    fact_sales: fact_sales
+    fact_returns: fact_returns
+    fact_orders: fact_orders
+    fact_inventory: fact_inventory  # latest snapshot per product/store
+    agg_sales_monthly: agg_sales_monthly
+    agg_product_performance: agg_product_performance
+    agg_store_performance: agg_store_performance
+    agg_customer_segments: agg_customer_segments
+    agg_orders_realtime: agg_orders_realtime
+    agg_inventory_turns: agg_inventory_turns
+  # Country -> governed `data_region` tag value (drives Phase 9 row-level security)
+  # Source data is North America; the EU / APAC stores come from the SYNTHETIC_* expansion files.
+  data_region_by_country:
+    USA: NA
+    Canada: NA
+    Mexico: NA
+    Germany: EU
+    France: EU
+    Spain: EU
+    Italy: EU
+    Netherlands: EU
+    Sweden: EU
+    Japan: APAC
+    South Korea: APAC
+    Australia: APAC
+    Singapore: APAC
+    India: APAC
+  # Columns that must not create a new SCD2 version when they change (lineage/housekeeping)
+  scd2_ignore_columns: [_rescued_data, _source_file_path, _source_file_name, _source_file_modified_at, _ingested_at]
+
+# NoSQL source (MongoDB Atlas) -> Bronze: the master data (customers + products).
+# Seeded from the CSVs by `python -m maven_market.producers.mongo_seed`, then read inside the pipeline by a
+# Python streaming data source (src/maven_market/ingestion/mongo_source.py, pymongo, serverless-safe).
+# Append-only, like the other Bronze tables: a snapshot is appended whenever the collection has changed since
+# the last committed offset (snapshot-on-change, not CDC). Silver's SCD2 flow turns real changes into history.
+mongo:
+  uri_secret: mongo-url
+  database: maven_market
+  collections:
+    # Collection name == key in producer.key_files (the CSV the seed script loads it from).
+    # `schema` drives seeding (CSV -> typed document), reading (DataFrame schema) and column projection.
+    products:
+      bronze_table: bronze.products
+      id_field: product_id
+      schema: >-
+        _id STRING, product_id INT, product_brand STRING, product_name STRING, product_sku LONG,
+        product_retail_price DOUBLE, product_cost DOUBLE, product_weight DOUBLE,
+        recyclable INT, low_fat INT
+    customers:
+      bronze_table: bronze.customers
+      id_field: customer_id
+      schema: >-
+        _id STRING, customer_id INT, customer_acct_num LONG, first_name STRING, last_name STRING,
+        customer_address STRING, customer_city STRING, customer_state_province STRING,
+        customer_postal_code INT, customer_country STRING, birthdate DATE, marital_status STRING,
+        yearly_income STRING, gender STRING, total_children INT, num_children_at_home INT,
+        education STRING, acct_open_date DATE, member_card STRING, occupation STRING, homeowner STRING
