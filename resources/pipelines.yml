@@ -1,0 +1,24 @@
+# Paths in resources/*.yml are relative to THIS file.
+resources:
+  pipelines:
+    silver_gold:
+      name: maven_market_silver_gold
+      catalog: ${var.catalog}
+      # Default schema; datasets use fully qualified names, so Gold tables land in the gold schema.
+      schema: ${var.silver_schema}
+      serverless: true
+      libraries:
+        - file:
+            path: ../src/maven_market/pipelines/bronze.py
+        - file:
+            path: ../src/maven_market/pipelines/silver.py
+        - file:
+            path: ../src/maven_market/pipelines/gold.py
+      environment:
+        dependencies:
+          - "pymongo==4.10.1"
+      configuration:
+        maven.env: ${var.env}
+        # config/ and src/ are synced with the bundle; the pipeline imports from there
+        maven.config_dir: ${workspace.file_path}/config
+        maven.src_path: ${workspace.file_path}/src

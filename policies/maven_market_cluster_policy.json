@@ -1,0 +1,27 @@
+{
+  "node_type_id": {
+    "type": "allowlist",
+    "values": ["Standard_F4", "Standard_F8", "Standard_D4ds_v5", "Standard_D8ds_v5"],
+    "defaultValue": "Standard_F4"
+  },
+  "driver_node_type_id": {
+    "type": "allowlist",
+    "values": ["Standard_F4", "Standard_F8", "Standard_D4ds_v5", "Standard_D8ds_v5"],
+    "defaultValue": "Standard_F4"
+  },
+  "num_workers": {
+    "type": "range",
+    "minValue": 0,
+    "maxValue": 2,
+    "defaultValue": 1
+  },
+  "autotermination_minutes": {
+    "type": "range",
+    "maxValue": 30,
+    "defaultValue": 20
+  },
+  "custom_tags.project": {
+    "type": "fixed",
+    "value": "maven_market"
+  }
+}
