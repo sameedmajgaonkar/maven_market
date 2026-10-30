@@ -21,7 +21,7 @@ dist/
 venv/
 env/
 
-# Local tools and editors
+# Local tools & editors
 .agents/
 .aws/
 .codex/
