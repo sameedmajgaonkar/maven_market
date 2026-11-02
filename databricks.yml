@@ -1,5 +1,7 @@
 # Databricks Asset Bundle (DAB) root for Maven Market.
 # Path gotcha: paths in THIS file are relative to ./ (e.g. ./src/...),
+
+#paths inside resources/*.yml are relative to that file (e.g. ../src/...).
 # paths inside resources/*.yml are relative to that file (e.g. ../src/...).
 bundle:
   name: maven_market
