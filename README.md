@@ -1,8 +1,8 @@
 # Maven Market
 
 # Retail analytics lakehouse on Azure Databricks: ADLS CSV, Confluent Kafka and
-MongoDB → Bronze → Silver (cleansing, SCD2) → Gold analytics, with Unity Catalog
-governance. Databricks Asset Bundles deploy the pipeline and jobs....
+<!-- MongoDB → Bronze → Silver (cleansing, SCD2) → Gold analytics, with Unity Catalog
+governance. Databricks Asset Bundles deploy the pipeline and jobs. -->
 
 ## Run locally
 

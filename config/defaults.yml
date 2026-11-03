@@ -1,5 +1,6 @@
 # Default config — shared across environments. Override per-env in dev.yml / prod.yml.
 # Read via maven_market.config.load_config(env). ${VAR} / ${VAR:default} = env substitution.
+# Read via maven_market.config.load_config(env). ${VAR} / ${VAR:default} = env substitution.
 
 catalog: maven_market_uc
 
