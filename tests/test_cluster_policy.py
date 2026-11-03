@@ -1,4 +1,4 @@
-"""Guards the cluster policy against drifting from the Global Constraints in the plan."""
+"""Guards the cluster policy against drifting from the Global Constraints in the plann."""
 import json
 from pathlib import Path
 
